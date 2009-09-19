@@ -635,6 +635,7 @@ AC_ARG_ENABLE(clientids,      AS_HELP_STRING([--disable-clientids], [Build Xorg 
 AC_ARG_ENABLE(pciaccess, AS_HELP_STRING([--enable-pciaccess], [Build Xorg with pciaccess library (default: enabled)]), [PCI=$enableval], [PCI=yes])
 AC_ARG_ENABLE(linux_acpi, AC_HELP_STRING([--disable-linux-acpi], [Disable building ACPI support on Linux (if available).]), [enable_linux_acpi=$enableval], [enable_linux_acpi=yes])
 AC_ARG_ENABLE(linux_apm, AC_HELP_STRING([--disable-linux-apm], [Disable building APM support on Linux (if available).]), [enable_linux_apm=$enableval], [enable_linux_apm=yes])
+AC_ARG_ENABLE(wayland,      AS_HELP_STRING([--disable-wayland], [Build Wayland extension (default: enabled)]), [WAYLAND=$enableval], [WAYLAND=yes])
 
 dnl DDXes.
 AC_ARG_ENABLE(xorg,    	      AS_HELP_STRING([--enable-xorg], [Build Xorg server (default: auto)]), [XORG=$enableval], [XORG=auto])
@@ -1023,6 +1024,14 @@ fi
 if test "x$MITSHM" = xauto; then
 	MITSHM="$ac_cv_sysv_ipc"
 fi
+
+AM_CONDITIONAL(WAYLAND, [test "x$WAYLAND" = xyes])
+if test "x$WAYLAND" = xyes; then
+	AC_DEFINE(XORG_WAYLAND, 1, [Support wayland mode])
+	REQUIRED_MODULES="$REQUIRED_MODULES wayland-client"
+	WAYLAND_SCANNER_RULES(['$(top_srcdir)/hw/xfree86/xwayland'])
+fi
+
 AM_CONDITIONAL(MITSHM, [test "x$MITSHM" = xyes])
 if test "x$MITSHM" = xyes; then
 	AC_DEFINE(MITSHM, 1, [Support MIT-SHM extension])
@@ -1118,6 +1127,7 @@ case "$DRI2,$HAVE_DRI2PROTO" in
 esac
 AM_CONDITIONAL(DRI2, test "x$DRI2" = xyes)
 
+<<<<<<< HEAD
 PKG_CHECK_MODULES([DRI3PROTO], $DRI3PROTO,
                   [HAVE_DRI3PROTO=yes], [HAVE_DRI3PROTO=no])
 
@@ -1177,11 +1187,15 @@ esac
 AM_CONDITIONAL(DRI3, test "x$DRI3" = xyes)
 
 if test "x$DRI" = xyes || test "x$DRI2" = xyes || test "x$DRI3" = xyes || test "x$CONFIG_UDEV_KMS" = xyes; then
+=======
+if test "x$DRI" = xyes || test "x$DRI2" = xyes || test "x$CONFIG_UDEV_KMS" = xyes || test "x$WAYLAND" = xyes ; then
+>>>>>>> Add xwayland module
 	if test "x$DRM" = xyes; then
 		AC_DEFINE(WITH_LIBDRM, 1, [Building with libdrm support])
 		PKG_CHECK_MODULES([LIBDRM], $LIBDRM)
 	fi
 fi
+AM_CONDITIONAL(DRM, test "x$DRM" = xyes)
 
 if test "x$DRI2" = xyes; then
 	save_CFLAGS=$CFLAGS
@@ -2352,6 +2366,7 @@ hw/xfree86/dixmods/Makefile
 hw/xfree86/doc/Makefile
 hw/xfree86/dri/Makefile
 hw/xfree86/dri2/Makefile
+hw/xfree86/xwayland/Makefile
 hw/xfree86/exa/Makefile
 hw/xfree86/exa/man/Makefile
 hw/xfree86/fbdevhw/Makefile
