@@ -1349,13 +1349,16 @@ DRI2Connect(ClientPtr client, ScreenPtr pScreen,
 }
 
 static int
-DRI2AuthMagic (ScreenPtr pScreen, uint32_t magic)
+DRI2AuthMagic (ClientPtr client, ScreenPtr pScreen, uint32_t magic)
 {
     DRI2ScreenPtr ds = DRI2GetScreen(pScreen);
     if (ds == NULL)
         return -EINVAL;
 
-    return (*ds->LegacyAuthMagic) (ds->fd, magic);
+    if (ds->LegacyAuthMagic2)
+        return (*ds->LegacyAuthMagic2) (pScreen, magic);
+    else
+        return (*ds->LegacyAuthMagic) (ds->fd, magic);
 }
 
 Bool
