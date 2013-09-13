@@ -148,4 +148,7 @@
 /* Have support for X shared memory fence library (xshmfence) */
 #undef HAVE_XSHMFENCE
 
+/* Building Xorg server. */
+#undef XORG_WAYLAND
+
 #endif /* _XORG_CONFIG_H_ */
