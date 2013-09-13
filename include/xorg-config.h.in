@@ -139,4 +139,7 @@
 /* Have X server platform bus support */
 #undef XSERVER_PLATFORM_BUS
 
+/* Building Xorg server. */
+#undef XORG_WAYLAND
+
 #endif /* _XORG_CONFIG_H_ */
