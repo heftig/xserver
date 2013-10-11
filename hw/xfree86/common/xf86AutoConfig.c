@@ -277,6 +277,7 @@ listPossibleVideoDrivers(char *matches[], int nmatches)
     if (i < (nmatches - 1)) {
 #ifdef XORG_WAYLAND
         if (xorgWayland)
+            matches[i++] = xnfstrdup("wlglamor");
             matches[i++] = xnfstrdup("wayland");
         else
 #endif
