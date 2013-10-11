@@ -31,11 +31,9 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <wayland-client.h>
-#include <X11/extensions/compositeproto.h>
 
 #include <xf86Crtc.h>
 #include <selection.h>
-#include <compositeext.h>
 #include <exevents.h>
 
 #include "xwayland.h"
@@ -84,49 +82,6 @@ xwl_window_attach(struct xwl_window *xwl_window, PixmapPtr pixmap)
     callback = wl_display_sync(xwl_screen->display);
     wl_callback_add_listener(callback, &free_pixmap_listener, pixmap);
     pixmap->refcnt++;
-}
-
-static Bool
-xwl_create_window(WindowPtr window)
-{
-    ScreenPtr screen = window->drawable.pScreen;
-    struct xwl_screen *xwl_screen;
-    Bool ret;
-
-    xwl_screen = xwl_screen_get(screen);
-
-    screen->CreateWindow = xwl_screen->CreateWindow;
-    ret = (*screen->CreateWindow)(window);
-    xwl_screen->CreateWindow = screen->CreateWindow;
-    screen->CreateWindow = xwl_create_window;
-
-    if (!(xwl_screen->flags & XWL_FLAGS_ROOTLESS) ||
-	window->parent != NULL)
-	return ret;
-
-    CompositeRedirectSubwindows(window, CompositeRedirectManual);
-
-    return ret;
-}
-
-static int
-xwl_destroy_window (WindowPtr window)
-{
-    ScreenPtr screen = window->drawable.pScreen;
-    struct xwl_screen *xwl_screen;
-    Bool ret;
-
-    if (window->parent == NULL)
-	CompositeUnRedirectSubwindows (window, CompositeRedirectManual);
-
-    xwl_screen = xwl_screen_get(screen);
-
-    screen->DestroyWindow = xwl_screen->DestroyWindow;
-    ret = (*screen->DestroyWindow)(window);
-    xwl_screen->DestroyWindow = screen->DestroyWindow;
-    screen->DestroyWindow = xwl_destroy_window;
-
-    return ret;
 }
 
 static void
@@ -288,12 +243,6 @@ xwl_screen_init_window(struct xwl_screen *xwl_screen, ScreenPtr screen)
 {
     if (!dixRegisterPrivateKey(&xwl_window_private_key, PRIVATE_WINDOW, 0))
 	return BadAlloc;
-
-    xwl_screen->CreateWindow = screen->CreateWindow;
-    screen->CreateWindow = xwl_create_window;
-
-    xwl_screen->DestroyWindow = screen->DestroyWindow;
-    screen->DestroyWindow = xwl_destroy_window;
 
     xwl_screen->RealizeWindow = screen->RealizeWindow;
     screen->RealizeWindow = xwl_realize_window;
