@@ -282,12 +282,12 @@ listPossibleVideoDrivers(char *matches[], int nmatches)
 
 #if !defined(sun)
     /* Fallback to platform default frame buffer driver */
-    if (i < (nmatches - 1)) {
+    if (i < (nmatches - 2)) {
 #ifdef XORG_WAYLAND
-        if (xorgWayland)
+        if (xorgWayland) {
             matches[i++] = xnfstrdup("wlglamor");
             matches[i++] = xnfstrdup("wayland");
-        else
+        } else
 #endif
 #if !defined(__linux__) && defined(__sparc__)
             matches[i++] = xnfstrdup("wsfb");
