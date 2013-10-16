@@ -153,8 +153,15 @@ xwl_seat_set_cursor(struct xwl_seat *xwl_seat)
 {
     struct wl_buffer *buffer;
 
-    if (!xwl_seat->x_cursor || !xwl_seat->wl_pointer)
+    if (!xwl_seat->wl_pointer)
         return;
+
+    if (!xwl_seat->x_cursor) {
+        wl_pointer_set_cursor(xwl_seat->wl_pointer,
+                              xwl_seat->pointer_enter_serial,
+                              NULL, 0, 0);
+        return;
+    }
 
     buffer = dixGetPrivate(&xwl_seat->x_cursor->devPrivates,
                            &xwl_seat->xwl_screen->cursor_private_key);
