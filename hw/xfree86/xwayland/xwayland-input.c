@@ -143,7 +143,10 @@ xwl_keyboard_proc(DeviceIntPtr device, int what)
     switch (what) {
     case DEVICE_INIT:
 	device->public.on = FALSE;
-	len = strnlen(xwl_seat->keymap, xwl_seat->keymap_size);
+        if (xwl_seat->keymap)
+            len = strnlen(xwl_seat->keymap, xwl_seat->keymap_size);
+        else
+            len = 0;
         if (!InitKeyboardDeviceStructFromString(device, xwl_seat->keymap,
 						len,
 						NULL, xwl_keyboard_control))
@@ -453,12 +456,42 @@ keyboard_handle_keymap(void *data, struct wl_keyboard *keyboard,
 		       uint32_t format, int fd, uint32_t size)
 {
     struct xwl_seat *xwl_seat = data;
+    DeviceIntPtr master;
+    XkbDescPtr xkb;
+    XkbChangesRec changes = { 0 };
+
+    if (xwl_seat->keymap)
+        munmap(xwl_seat->keymap, xwl_seat->keymap_size);
 
     xwl_seat->keymap_size = size;
     xwl_seat->keymap = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-    if (xwl_seat->keymap == MAP_FAILED)
-	;	/* wah wah */
+    if (xwl_seat->keymap == MAP_FAILED) {
+        xwl_seat->keymap_size = 0;
+        xwl_seat->keymap = NULL;
+        goto out;
+    }
 
+    if (!xwl_seat->keyboard)
+        goto out;
+
+    xkb = XkbCompileKeymapFromString(xwl_seat->keyboard, xwl_seat->keymap,
+                                     strnlen(xwl_seat->keymap, xwl_seat->keymap_size));
+    if (!xkb)
+        goto out;
+
+    XkbUpdateDescActions(xkb, xkb->min_key_code, XkbNumKeys(xkb), &changes);
+    /* Keep the current controls */
+    XkbCopyControls(xkb, xwl_seat->keyboard->key->xkbInfo->desc);
+
+    XkbDeviceApplyKeymap(xwl_seat->keyboard, xkb);
+
+    master = GetMaster(xwl_seat->keyboard, MASTER_KEYBOARD);
+    if (master && master->lastSlave == xwl_seat->keyboard)
+        XkbDeviceApplyKeymap(master, xkb);
+
+    XkbFreeKeyboard(xkb, XkbAllComponentsMask, TRUE);
+
+ out:
     close(fd);
 }
 
