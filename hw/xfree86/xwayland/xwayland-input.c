@@ -504,6 +504,7 @@ keyboard_handle_enter(void *data, struct wl_keyboard *keyboard,
     uint32_t *k;
 
     xwl_seat->xwl_screen->serial = serial;
+    xwl_seat->keyboard_focus = surface;
 
     wl_array_copy(&xwl_seat->keys, keys);
     wl_array_for_each(k, &xwl_seat->keys)
@@ -521,6 +522,8 @@ keyboard_handle_leave(void *data, struct wl_keyboard *keyboard,
 
     wl_array_for_each(k, &xwl_seat->keys)
 	xf86PostKeyboardEvent(xwl_seat->keyboard, *k + 8, 0);
+
+    xwl_seat->keyboard_focus = NULL;
 }
 
 static void
@@ -529,7 +532,42 @@ keyboard_handle_modifiers(void *data, struct wl_keyboard *keyboard,
 			  uint32_t mods_latched, uint32_t mods_locked,
 			  uint32_t group)
 {
-    /* FIXME: Need more server XKB API here. */
+    struct xwl_seat *xwl_seat = data;
+    DeviceIntPtr dev;
+    XkbStateRec old_state, *new_state;
+    xkbStateNotify sn;
+    CARD16 changed;
+
+    /* We don't need any of this while we have keyboard focus since
+       the regular key event processing already takes care of setting
+       our internal state correctly. */
+    if (xwl_seat->keyboard_focus)
+        return;
+
+    for (dev = inputInfo.devices; dev; dev = dev->next) {
+        if (dev != xwl_seat->keyboard && dev != GetMaster(xwl_seat->keyboard, MASTER_KEYBOARD))
+            continue;
+
+        old_state = dev->key->xkbInfo->state;
+        new_state = &dev->key->xkbInfo->state;
+
+        new_state->locked_group = group & XkbAllGroupsMask;
+        new_state->locked_mods = mods_locked & XkbAllModifiersMask;
+        XkbLatchModifiers(dev, XkbAllModifiersMask, mods_latched & XkbAllModifiersMask);
+
+        XkbComputeDerivedState(dev->key->xkbInfo);
+
+        changed = XkbStateChangedFlags(&old_state, new_state);
+        if (!changed)
+            continue;
+
+        sn.keycode = 0;
+        sn.eventType = 0;
+        sn.requestMajor = XkbReqCode;
+        sn.requestMinor = X_kbLatchLockState; /* close enough */
+        sn.changed = changed;
+        XkbSendStateNotify(dev, &sn);
+    }
 }
 
 static const struct wl_keyboard_listener keyboard_listener = {
