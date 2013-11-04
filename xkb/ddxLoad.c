@@ -90,14 +90,18 @@ OutputDirectory(char *outdir, size_t size)
     }
 }
 
-static Bool
-XkbDDXCompileKeymapByNames(XkbDescPtr xkb,
-                           XkbComponentNamesPtr names,
-                           unsigned want,
-                           unsigned need, char *nameRtrn, int nameRtrnLen)
-{
+typedef struct XkbCompContext {
+    char keymap[PATH_MAX];
     FILE *out;
-    char *buf = NULL, keymap[PATH_MAX], xkm_output_dir[PATH_MAX];
+    char *buf;
+    char tmpname[PATH_MAX];
+    const char *xkmfile;
+} XkbCompContextRec, *XkbCompContextPtr;
+
+static Bool
+StartXkbComp(XkbCompContextPtr ctx)
+{
+    char xkm_output_dir[PATH_MAX];
 
     const char *emptystring = "";
     char *xkbbasedirflag = NULL;
@@ -105,22 +109,19 @@ XkbDDXCompileKeymapByNames(XkbDescPtr xkb,
     const char *xkbbindirsep = emptystring;
 
 #ifdef WIN32
-    /* WIN32 has no popen. The input must be stored in a file which is
-       used as input for xkbcomp. xkbcomp does not read from stdin. */
-    char tmpname[PATH_MAX];
-    const char *xkmfile = tmpname;
+    ctx->xkmfile = ctx->tmpname;
 #else
-    const char *xkmfile = "-";
+    ctx->xkmfile = "-";
 #endif
 
-    snprintf(keymap, sizeof(keymap), "server-%s", display);
+    snprintf(ctx->keymap, sizeof(ctx->keymap), "server-%s", display);
 
     OutputDirectory(xkm_output_dir, sizeof(xkm_output_dir));
 
 #ifdef WIN32
-    strcpy(tmpname, Win32TempDir());
-    strcat(tmpname, "\\xkb_XXXXXX");
-    (void) mktemp(tmpname);
+    strcpy(ctx->tmpname, Win32TempDir());
+    strcat(ctx->tmpname, "\\xkb_XXXXXX");
+    (void) mktemp(ctx->tmpname);
 #endif
 
     if (XkbBaseDirectory != NULL) {
@@ -139,74 +140,90 @@ XkbDDXCompileKeymapByNames(XkbDescPtr xkb,
         }
     }
 
-    if (asprintf(&buf,
+    if (asprintf(&ctx->buf,
                  "\"%s%sxkbcomp\" -w %d %s -xkm \"%s\" "
                  "-em1 %s -emp %s -eml %s \"%s%s.xkm\"",
                  xkbbindir, xkbbindirsep,
                  ((xkbDebugFlags < 2) ? 1 :
                   ((xkbDebugFlags > 10) ? 10 : (int) xkbDebugFlags)),
-                 xkbbasedirflag ? xkbbasedirflag : "", xkmfile,
+                 xkbbasedirflag ? xkbbasedirflag : "", ctx->xkmfile,
                  PRE_ERROR_MSG, ERROR_PREFIX, POST_ERROR_MSG1,
-                 xkm_output_dir, keymap) == -1)
-        buf = NULL;
+                 xkm_output_dir, ctx->keymap) == -1)
+        ctx->buf = NULL;
 
     free(xkbbasedirflag);
 
-    if (!buf) {
+    if (!ctx->buf) {
         LogMessage(X_ERROR,
                    "XKB: Could not invoke xkbcomp: not enough memory\n");
         return FALSE;
     }
 
 #ifndef WIN32
-    out = Popen(buf, "w");
+    ctx->out = Popen(ctx->buf, "w");
 #else
-    out = fopen(tmpname, "w");
+    ctx->out = fopen(ctx->tmpname, "w");
 #endif
 
-    if (out != NULL) {
-#ifdef DEBUG
-        if (xkbDebugFlags) {
-            ErrorF("[xkb] XkbDDXCompileKeymapByNames compiling keymap:\n");
-            XkbWriteXKBKeymapForNames(stderr, names, xkb, want, need);
-        }
-#endif
-        XkbWriteXKBKeymapForNames(out, names, xkb, want, need);
+    return ctx->out != NULL;
+}
+
+static Bool
+FinishXkbComp(XkbCompContextPtr ctx)
+{
+    if (!ctx->buf)
+	return FALSE;
+    if (ctx->out != NULL) {
 #ifndef WIN32
-        if (Pclose(out) == 0)
+        if (Pclose(ctx->out) == 0)
 #else
-        if (fclose(out) == 0 && System(buf) >= 0)
+        if (fclose(ctx->out) == 0 && System(ctx->buf) >= 0)
 #endif
         {
             if (xkbDebugFlags)
-                DebugF("[xkb] xkb executes: %s\n", buf);
-            if (nameRtrn) {
-                strlcpy(nameRtrn, keymap, nameRtrnLen);
-            }
-            free(buf);
+                DebugF("[xkb] xkb executes: %s\n", ctx->buf);
+            free(ctx->buf);
 #ifdef WIN32
-            unlink(tmpname);
+            unlink(ctx->tmpname);
 #endif
             return TRUE;
         }
         else
-            LogMessage(X_ERROR, "Error compiling keymap (%s)\n", keymap);
+            LogMessage(X_ERROR, "Error compiling keymap (%s)\n", ctx->keymap);
 #ifdef WIN32
         /* remove the temporary file */
-        unlink(tmpname);
+        unlink(ctx->tmpname);
 #endif
     }
     else {
 #ifndef WIN32
         LogMessage(X_ERROR, "XKB: Could not invoke xkbcomp\n");
 #else
-        LogMessage(X_ERROR, "Could not open file %s\n", tmpname);
+        LogMessage(X_ERROR, "Could not open file %s\n", ctx->tmpname);
 #endif
     }
-    if (nameRtrn)
-        nameRtrn[0] = '\0';
-    free(buf);
+    ctx->keymap[0] = '\0';
+    free(ctx->buf);
     return FALSE;
+}
+
+static Bool
+XkbDDXCompileKeymapByNames(XkbDescPtr xkb,
+                           XkbComponentNamesPtr names,
+                           unsigned want,
+                           unsigned need, XkbCompContextPtr ctx)
+{
+    if (StartXkbComp(ctx)) {
+#ifdef DEBUG
+        if (xkbDebugFlags) {
+            ErrorF("[xkb] XkbDDXCompileKeymapByNames compiling keymap:\n");
+            XkbWriteXKBKeymapForNames(stderr, names, xkb, want, need);
+        }
+#endif
+        XkbWriteXKBKeymapForNames(ctx->out, names, xkb, want, need);
+    }
+
+    return FinishXkbComp(ctx);
 }
 
 static FILE *
@@ -245,37 +262,14 @@ XkbDDXOpenConfigFile(char *mapName, char *fileNameRtrn, int fileNameRtrnLen)
     return file;
 }
 
-unsigned
-XkbDDXLoadKeymapByNames(DeviceIntPtr keybd,
-                        XkbComponentNamesPtr names,
-                        unsigned want,
-                        unsigned need,
-                        XkbDescPtr *xkbRtrn, char *nameRtrn, int nameRtrnLen)
+static unsigned
+LoadXKM(unsigned want, unsigned need, XkbCompContextPtr ctx, XkbDescPtr *xkbRtrn)
 {
-    XkbDescPtr xkb;
     FILE *file;
     char fileName[PATH_MAX];
     unsigned missing;
 
-    *xkbRtrn = NULL;
-    if ((keybd == NULL) || (keybd->key == NULL) ||
-        (keybd->key->xkbInfo == NULL))
-        xkb = NULL;
-    else
-        xkb = keybd->key->xkbInfo->desc;
-    if ((names->keycodes == NULL) && (names->types == NULL) &&
-        (names->compat == NULL) && (names->symbols == NULL) &&
-        (names->geometry == NULL)) {
-        LogMessage(X_ERROR, "XKB: No components provided for device %s\n",
-                   keybd->name ? keybd->name : "(unnamed keyboard)");
-        return 0;
-    }
-    else if (!XkbDDXCompileKeymapByNames(xkb, names, want, need,
-                                         nameRtrn, nameRtrnLen)) {
-        LogMessage(X_ERROR, "XKB: Couldn't compile keymap\n");
-        return 0;
-    }
-    file = XkbDDXOpenConfigFile(nameRtrn, fileName, PATH_MAX);
+    file = XkbDDXOpenConfigFile(ctx->keymap, fileName, PATH_MAX);
     if (file == NULL) {
         LogMessage(X_ERROR, "Couldn't open compiled keymap file %s\n",
                    fileName);
@@ -295,6 +289,59 @@ XkbDDXLoadKeymapByNames(DeviceIntPtr keybd,
     fclose(file);
     (void) unlink(fileName);
     return (need | want) & (~missing);
+}
+
+unsigned
+XkbDDXLoadKeymapByNames(DeviceIntPtr keybd,
+                        XkbComponentNamesPtr names,
+                        unsigned want,
+                        unsigned need,
+                        XkbDescPtr *xkbRtrn, char *nameRtrn, int nameRtrnLen)
+{
+    XkbDescPtr xkb;
+    XkbCompContextRec ctx;
+
+    *xkbRtrn = NULL;
+    if ((keybd == NULL) || (keybd->key == NULL) ||
+        (keybd->key->xkbInfo == NULL))
+        xkb = NULL;
+    else
+        xkb = keybd->key->xkbInfo->desc;
+    if ((names->keycodes == NULL) && (names->types == NULL) &&
+        (names->compat == NULL) && (names->symbols == NULL) &&
+        (names->geometry == NULL)) {
+        LogMessage(X_ERROR, "XKB: No components provided for device %s\n",
+                   keybd->name ? keybd->name : "(unnamed keyboard)");
+        return 0;
+    }
+    else if (!XkbDDXCompileKeymapByNames(xkb, names, want, need, &ctx)) {
+        LogMessage(X_ERROR, "XKB: Couldn't compile keymap\n");
+        return 0;
+    }
+
+    return LoadXKM(want, need, &ctx, xkbRtrn);
+}
+
+static unsigned
+XkbDDXLoadKeymapFromString(DeviceIntPtr keybd,
+			   const char *keymap, int keymap_length,
+			   unsigned want,
+			   unsigned need,
+			   XkbDescPtr *xkbRtrn)
+{
+    XkbCompContextRec ctx;
+
+    *xkbRtrn = NULL;
+
+    if (StartXkbComp(&ctx))
+	fwrite(keymap, keymap_length, 1, ctx.out);
+
+    if (!FinishXkbComp(&ctx)) {
+        LogMessage(X_ERROR, "XKB: Couldn't compile keymap\n");
+        return 0;
+    }
+
+    return LoadXKM(want, need, &ctx, xkbRtrn);
 }
 
 Bool
@@ -390,6 +437,29 @@ XkbCompileKeymapForDevice(DeviceIntPtr dev, XkbRMLVOSet * rmlvo, int need)
     return xkb;
 }
 
+static XkbDescPtr
+KeymapOrDefaults(DeviceIntPtr dev, XkbDescPtr xkb)
+{
+    XkbRMLVOSet dflts;
+
+    if (xkb)
+	return xkb;
+
+    /* we didn't get what we really needed. And that will likely leave
+     * us with a keyboard that doesn't work. Use the defaults instead */
+    LogMessage(X_ERROR, "XKB: Failed to load keymap. Loading default "
+	       "keymap instead.\n");
+
+    XkbGetRulesDflts(&dflts);
+
+    xkb = XkbCompileKeymapForDevice(dev, &dflts, 0);
+
+    XkbFreeRMLVOSet(&dflts, FALSE);
+
+    return xkb;
+}
+
+
 XkbDescPtr
 XkbCompileKeymap(DeviceIntPtr dev, XkbRMLVOSet * rmlvo)
 {
@@ -407,20 +477,34 @@ XkbCompileKeymap(DeviceIntPtr dev, XkbRMLVOSet * rmlvo)
 
     xkb = XkbCompileKeymapForDevice(dev, rmlvo, need);
 
-    if (!xkb) {
-        XkbRMLVOSet dflts;
+    return KeymapOrDefaults(dev, xkb);
+}
 
-        /* we didn't get what we really needed. And that will likely leave
-         * us with a keyboard that doesn't work. Use the defaults instead */
-        LogMessage(X_ERROR, "XKB: Failed to load keymap. Loading default "
-                   "keymap instead.\n");
+XkbDescPtr
+XkbCompileKeymapFromString(DeviceIntPtr dev,
+			   const char *keymap, int keymap_length)
+{
+    XkbDescPtr xkb;
+    unsigned int need, provided;
 
-        XkbGetRulesDflts(&dflts);
-
-        xkb = XkbCompileKeymapForDevice(dev, &dflts, 0);
-
-        XkbFreeRMLVOSet(&dflts, FALSE);
+    if (!dev || !keymap) {
+        LogMessage(X_ERROR, "XKB: No device or keymap specified\n");
+        return NULL;
     }
 
-    return xkb;
+    /* These are the components we really really need */
+    need = XkmSymbolsMask | XkmCompatMapMask | XkmTypesMask |
+        XkmKeyNamesMask | XkmVirtualModsMask;
+
+    provided =
+	XkbDDXLoadKeymapFromString(dev, keymap, keymap_length,
+				   XkmAllIndicesMask, need, &xkb);
+    if ((need & provided) != need) {
+	if (xkb) {
+	    XkbFreeKeyboard(xkb, 0, TRUE);
+	    xkb = NULL;
+	}
+    }
+
+    return KeymapOrDefaults(dev, xkb);
 }
