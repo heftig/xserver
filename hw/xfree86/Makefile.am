@@ -12,6 +12,7 @@ endif
 if DRI3
 DRI3_BUILDDIR = $(top_builddir)/dri3
 DRI3_LIB = $(DRI3_BUILDDIR)/libdri3.la
+endif
 
 if WAYLAND
 WAYLAND_SUBDIR = xwayland
