@@ -240,7 +240,6 @@ xwl_unrealize_window(WindowPtr window)
     xorg_list_del(&xwl_window->link);
     if (RegionNotEmpty(DamageRegion(xwl_window->damage)))
 	xorg_list_del(&xwl_window->link_damage);
-    DamageUnregister(&window->drawable, xwl_window->damage);
     DamageDestroy(xwl_window->damage);
     free(xwl_window);
     dixSetPrivate(&window->devPrivates, &xwl_window_private_key, NULL);
