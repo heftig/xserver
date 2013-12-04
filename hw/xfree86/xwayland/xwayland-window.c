@@ -110,7 +110,7 @@ xwl_realize_window(WindowPtr window)
 
     screen->RealizeWindow = xwl_screen->RealizeWindow;
     ret = (*screen->RealizeWindow)(window);
-    xwl_screen->RealizeWindow = xwl_screen->RealizeWindow;
+    xwl_screen->RealizeWindow = screen->RealizeWindow;
     screen->RealizeWindow = xwl_realize_window;
 
     if (xwl_screen->flags & XWL_FLAGS_ROOTLESS) {
