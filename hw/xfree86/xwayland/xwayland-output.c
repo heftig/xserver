@@ -355,7 +355,7 @@ display_handle_mode(void *data, struct wl_output *wl_output, uint32_t flags,
     }
 
     xwl_output->xf86crtc->enabled = TRUE;
-    mode = xf86CVTMode(width, height, refresh, TRUE, FALSE);
+    mode = xf86CVTMode(width, height, (float) refresh / 1000, TRUE, FALSE);
     xf86CrtcSetModeTransform(xwl_output->xf86crtc, mode, xwl_output->rotation,
                              NULL, xwl_output->x, xwl_output->y);
 }
